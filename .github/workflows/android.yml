@@ -32,12 +32,14 @@ jobs:
       # Signing key from repository secrets (see README). Without them the APK is signed with a
       # throwaway key: it installs, but the next build cannot update it in place.
       - name: Prepare signing key
+        id: key
         env:
           KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "SIGNING_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::No SIGNING_KEYSTORE_BASE64 secret: the APK is signed with a temporary key and cannot update an installed copy."
           fi
@@ -53,18 +55,27 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk ../slusaonica.apk
+          # App bundle for Google Play (upload it in Play Console when the app goes there).
+          if [ "${{ steps.key.outputs.signed }}" = "true" ]; then
+            ./gradlew --no-daemon bundleRelease
+            cp app/build/outputs/bundle/release/app-release.aab ../slusaonica.aab
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: slusaonica-apk
-          path: slusaonica.apk
+          path: |
+            slusaonica.apk
+            slusaonica.aab
+          if-no-files-found: warn
 
-      # Each build on main becomes a GitHub Release, so the newest APK is always at
+      # Each signed build on main becomes a GitHub Release, so the newest APK is always at
       # https://github.com/<owner>/<repo>/releases/latest/download/slusaonica.apk
       # The tag's last number is the app's versionCode (the run number, see android/app/build.gradle):
       # the in-app update check compares it with the installed version.
       - name: Publish release
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        # Only APKs signed with the real key are published: a temporary key could never be updated.
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.key.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

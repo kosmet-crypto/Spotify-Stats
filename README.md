@@ -30,9 +30,23 @@
 
 1. **GitHub Pages** (потребно за Spotify пријаву): Settings → Pages → Source: *Deploy from a branch* → `main` / `(root)` → Save.
    Spotify се после пријаве враћа на `https://kosmet-crypto.github.io/Spotify-Stats/callback.html`, а та страница прослеђује пријаву у апликацију.
-2. **Потписни кључ за APK** (да би свака нова верзија могла да се инсталира преко старе): у Settings → Secrets and variables → Actions додај
-   `SIGNING_KEYSTORE_BASE64` (keystore фајл у base64), `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS` и по потреби `SIGNING_KEY_PASSWORD`.
-   Без њих APK се потписује привременим кључем: ради, али следећа верзија не може да се инсталира преко њега (прво деинсталирај стару).
+2. **Потписни кључ за APK** (да би свака нова верзија могла да се инсталира преко старе, и касније за Google Play).
+   Кључ никад не иде у репозиторијум, само у GitHub Secrets. Једном, на рачунару са Јавом или Android Studiom:
+   ```
+   keytool -genkeypair -v -keystore slusaonica-release.jks -storetype PKCS12 -alias slusaonica -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Slusaonica"
+   base64 -w0 slusaonica-release.jks > keystore.txt        # Windows: certutil -encode slusaonica-release.jks keystore.txt (па обриши прву и последњу линију)
+   ```
+   Затим у Settings → Secrets and variables → Actions → *New repository secret* додај:
+   `SIGNING_KEYSTORE_BASE64` (садржај `keystore.txt`), `SIGNING_STORE_PASSWORD` (лозинка), `SIGNING_KEY_ALIAS` = `slusaonica`.
+   `keystore.txt` обриши, а `.jks` фајл и лозинку сачувај на два сигурна места (менаџер лозинки + диск): без њих нема ажурирања.
+   Па Actions → *Android APK* → *Run workflow* на `main`: настаје први release.
+   Без кључа APK се и даље прави (за пробу, у Actions → artifacts), али се не објављује као release.
+
+### Google Play касније
+
+- Исти кључ се при објављивању даје Google-у кроз *Play App Signing* („use existing app signing key“): тако и они који су APK инсталирали одавде добијају ажурирања из Play продавнице.
+- Сваки потписан build прави и `slusaonica.aab` (Actions → artifacts), фајл који се шаље у Play Console.
+- Пре објаве: `targetSdk` мора бити најновији који Play тражи, политика приватности (подаци остају на телефону), и Spotify „extended quota“ ако ће апликацију користити више од 5 људи.
 
 ## Spotify апликација (за пријаву)
 
