@@ -1,0 +1,54 @@
+name: Направи потписни кључ
+
+# Run once from the Actions tab (works from a phone). Creates the APK signing key inside GitHub
+# and stores it straight into the repository's Actions secrets; the key and its password are
+# never printed, committed or shown to anyone.
+#
+# Needs a temporary secret KEYGEN_TOKEN: a fine-grained personal access token limited to this
+# repository with "Secrets: Read and write" (GitHub's own GITHUB_TOKEN cannot write secrets).
+# The workflow deletes that secret when done; delete the token itself in GitHub settings too.
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  actions: write  # to start the APK build at the end
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the key and store it in secrets
+        env:
+          GH_TOKEN: ${{ secrets.KEYGEN_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Нема тајне KEYGEN_TOKEN. Прати упутство у README-у (одељак „Потписни кључ“)."
+            exit 1
+          fi
+          # Never replace an existing key: installed apps could no longer be updated.
+          if gh secret list -R "$REPO" | cut -f1 | grep -qx SIGNING_KEYSTORE_BASE64; then
+            echo "::error::Кључ већ постоји (SIGNING_KEYSTORE_BASE64). Ништа није промењено."
+            exit 1
+          fi
+          PASS=$(openssl rand -hex 24)
+          echo "::add-mask::$PASS"
+          export PASS
+          keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 \
+            -storepass:env PASS -keypass:env PASS -alias slusaonica \
+            -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Slusaonica" >/dev/null 2>&1
+          B64=$(base64 -w0 "$RUNNER_TEMP/release.jks")
+          echo "::add-mask::$B64"
+          printf '%s' "$B64" | gh secret set SIGNING_KEYSTORE_BASE64 -R "$REPO"
+          printf '%s' "$PASS" | gh secret set SIGNING_STORE_PASSWORD -R "$REPO"
+          printf '%s' "slusaonica" | gh secret set SIGNING_KEY_ALIAS -R "$REPO"
+          rm -f "$RUNNER_TEMP/release.jks"
+          gh secret delete KEYGEN_TOKEN -R "$REPO" || echo "::warning::Обриши тајну KEYGEN_TOKEN ручно."
+          echo "Кључ је направљен и сачуван у тајнама репоа."
+
+      - name: Build the first signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run android.yml -R "${{ github.repository }}" --ref main

@@ -30,21 +30,21 @@
 
 1. **GitHub Pages** (потребно за Spotify пријаву): Settings → Pages → Source: *Deploy from a branch* → `main` / `(root)` → Save.
    Spotify се после пријаве враћа на `https://kosmet-crypto.github.io/Spotify-Stats/callback.html`, а та страница прослеђује пријаву у апликацију.
-2. **Потписни кључ за APK** (да би свака нова верзија могла да се инсталира преко старе, и касније за Google Play).
-   Кључ никад не иде у репозиторијум, само у GitHub Secrets. Једном, на рачунару са Јавом или Android Studiom:
-   ```
-   keytool -genkeypair -v -keystore slusaonica-release.jks -storetype PKCS12 -alias slusaonica -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Slusaonica"
-   base64 -w0 slusaonica-release.jks > keystore.txt        # Windows: certutil -encode slusaonica-release.jks keystore.txt (па обриши прву и последњу линију)
-   ```
-   Затим у Settings → Secrets and variables → Actions → *New repository secret* додај:
-   `SIGNING_KEYSTORE_BASE64` (садржај `keystore.txt`), `SIGNING_STORE_PASSWORD` (лозинка), `SIGNING_KEY_ALIAS` = `slusaonica`.
-   `keystore.txt` обриши, а `.jks` фајл и лозинку сачувај на два сигурна места (менаџер лозинки + диск): без њих нема ажурирања.
-   Па Actions → *Android APK* → *Run workflow* на `main`: настаје први release.
+2. **Потписни кључ за APK** (да би свака нова верзија могла да се инсталира преко старе). Једном, може са телефона:
+   1. github.com → слика профила → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+      Назив по жељи, Expiration: **1 day**, Repository access: *Only select repositories* → `Spotify-Stats`,
+      Permissions → Repository permissions → **Secrets: Read and write**. Generate token и копирај га.
+   2. Овај репо → Settings → Secrets and variables → Actions → New repository secret: име `KEYGEN_TOKEN`, вредност налепљени токен.
+   3. Actions → **Направи потписни кључ** → Run workflow.
+      GitHub прави кључ и дугу насумичну лозинку и чува их у тајнама `SIGNING_*`; нико их не види. Затим сам брише `KEYGEN_TOKEN` и покреће први потписани build (release).
+   4. Врати се у Personal access tokens и обриши онај токен (ионако истиче за дан).
+
+   Кључ никад није у репозиторијуму. Workflow одбија да замени већ постојећи кључ.
    Без кључа APK се и даље прави (за пробу, у Actions → artifacts), али се не објављује као release.
 
 ### Google Play касније
 
-- Исти кључ се при објављивању даје Google-у кроз *Play App Signing* („use existing app signing key“): тако и они који су APK инсталирали одавде добијају ажурирања из Play продавнице.
+- Кључ из GitHub тајни се не може прочитати, па на Play-у Google прави свој кључ (*Play App Signing*). Ко је APK инсталирао одавде, пређе на Play верзију једном: бекап у апликацији → деинсталирај → инсталирај са Play-а → врати бекап.
 - Сваки потписан build прави и `slusaonica.aab` (Actions → artifacts), фајл који се шаље у Play Console.
 - Пре објаве: `targetSdk` мора бити најновији који Play тражи, политика приватности (подаци остају на телефону), и Spotify „extended quota“ ако ће апликацију користити више од 5 људи.
 
