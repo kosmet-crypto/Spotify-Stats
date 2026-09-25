@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The web app lives at the repo root; copy it into the APK so it works offline.
+def webRoot = rootProject.file('..')
+tasks.register('copyWebApp', Copy) {
+    from(webRoot) {
+        include 'index.html', 'manifest.json', 'icons/**'
+    }
+    into 'src/main/assets/www'
+}
+preBuild.dependsOn copyWebApp
+
+// Release signing comes from the environment (GitHub Actions secrets, see README).
+// Without it the APK is signed with the runner's throwaway debug key: it installs,
+// but a later build cannot update it in place.
+def keystorePath = System.getenv('SIGNING_KEYSTORE')
+def hasSigningKey = keystorePath && file(keystorePath).isFile()
+
+android {
+    namespace 'app.slusaonica'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'app.slusaonica'
+        minSdk 26
+        targetSdk 34  // 35 forces edge-to-edge; the page does not pad for system bars in a WebView
+        // CI passes the run number so each new APK installs over the previous one.
+        def runNumber = System.getenv('GITHUB_RUN_NUMBER')
+        def build = runNumber ? (runNumber as int) : 1
+        versionCode build
+        versionName "1.0.${build}"
+        // Where the app looks for newer pages and APKs (GitHub Releases of this repo).
+        buildConfigField 'String', 'UPDATE_REPO', "\"${System.getenv('GITHUB_REPOSITORY') ?: 'kosmet-crypto/Spotify-Stats'}\""
+    }
+
+    signingConfigs {
+        if (hasSigningKey) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv('SIGNING_STORE_PASSWORD')
+                keyAlias System.getenv('SIGNING_KEY_ALIAS')
+                keyPassword System.getenv('SIGNING_KEY_PASSWORD') ?: System.getenv('SIGNING_STORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig hasSigningKey ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}
